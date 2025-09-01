@@ -1,0 +1,5 @@
+name: VivecraftPaperExtentions
+version: '1.0.0-paper'
+main: org.vivecraft.VivecraftPaperExtentions.VPE
+api-version: '1.21'
+authors: [ jrbudda, jaron780, GideonWhite1029 ]
