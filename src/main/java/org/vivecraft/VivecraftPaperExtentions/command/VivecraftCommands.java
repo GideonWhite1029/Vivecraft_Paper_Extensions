@@ -354,10 +354,11 @@ public class VivecraftCommands {
     }
 
     public static void sendMessage(CommandSender sender, String message) {
-        Component component = Component.text("[", NamedTextColor.BLUE)
-                .append(Component.text("Vivecraft", NamedTextColor.GRAY))
-                .append(Component.text("] ", NamedTextColor.BLUE))
-                .append(Component.text(message, NamedTextColor.WHITE));
+        Component component = Component.text("[")
+                .color(NamedTextColor.BLUE)
+                .append(Component.text("Vivecraft").color(NamedTextColor.GRAY))
+                .append(Component.text("] ").color(NamedTextColor.BLUE))
+                .append(Component.text(message).color(NamedTextColor.WHITE));
 
         sender.sendMessage(component);
     }

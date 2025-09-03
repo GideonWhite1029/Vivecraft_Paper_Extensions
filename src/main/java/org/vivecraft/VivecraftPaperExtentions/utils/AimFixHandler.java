@@ -21,90 +21,106 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 
 public class AimFixHandler extends ChannelInboundHandlerAdapter {
-	private final Connection netManager;
+    private final Connection netManager;
+    private final VPE plugin;
 
-	public AimFixHandler(Connection netManager) {
-		this.netManager = netManager;
-	}
+    public AimFixHandler(Connection netManager) {
+        this.netManager = netManager;
+        this.plugin = VPE.me;
+    }
 
-	@Override
-	public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-		Player player = ((ServerGamePacketListenerImpl)netManager.getPacketListener()).player;
-		boolean isCapturedPacket = msg instanceof ServerboundUseItemPacket || msg instanceof ServerboundUseItemOnPacket || msg instanceof ServerboundPlayerActionPacket;
-		UUID uuid = player.getGameProfile().getId();
-		if (!VPE.vivePlayers.containsKey(uuid) || !VPE.vivePlayers.get(uuid).isVR() || !isCapturedPacket || player.getServer() == null) {
-			// we don't need to handle this packet, just defer to the next handler in the pipeline
-			ctx.fireChannelRead(msg);
-			return;
-		}
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        Player player = ((ServerGamePacketListenerImpl)netManager.getPacketListener()).player;
+        boolean isCapturedPacket = msg instanceof ServerboundUseItemPacket || msg instanceof ServerboundUseItemOnPacket || msg instanceof ServerboundPlayerActionPacket;
+        UUID uuid = player.getGameProfile().getId();
+        if (!VPE.vivePlayers.containsKey(uuid) || !VPE.vivePlayers.get(uuid).isVR() || !isCapturedPacket || player.getServer() == null) {
+            // we don't need to handle this packet, just defer to the next handler in the pipeline
+            ctx.fireChannelRead(msg);
+            return;
+        }
 
-		player.getServer().submit(() -> {
-			// Save all the current orientation data
-			Vec3 oldPos = player.position();
-			Vec3 oldPrevPos = new Vec3(player.xo, player.yo, player.zo);
-			float oldPitch = player.getXRot();
-			float oldYaw = player.getYRot();
-			float oldYawHead = player.yHeadRot; // field_70759_as
-			float oldPrevPitch = player.xRotO;
-			float oldPrevYaw = player.yRotO;
-			float oldPrevYawHead = player.yHeadRotO; // field_70758_at
-			float oldEyeHeight = player.getEyeHeight();
+        if (plugin != null && plugin.isFolia()) {
+            plugin.getGlobalScheduler().run(plugin, (task) -> {
+                processPacket(player, msg, uuid);
+            });
+        } else {
+            if (plugin != null) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    processPacket(player, msg, uuid);
+                });
+            } else {
+                processPacket(player, msg, uuid);
+            }
+        }
+    }
 
-			VivePlayer data = null;
-			if (VPE.vivePlayers.containsKey(uuid) && VPE.vivePlayers.get(uuid).isVR()) { // Check again in case of race condition
-				data = VPE.vivePlayers.get(uuid);
-				Location pos = data.getControllerPos(0);
-				Vec3 aim = data.getControllerDir(0);
+    private void processPacket(Player player, Object msg, UUID uuid) {
+        // Save all the current orientation data
+        Vec3 oldPos = player.position();
+        Vec3 oldPrevPos = new Vec3(player.xo, player.yo, player.zo);
+        float oldPitch = player.getXRot();
+        float oldYaw = player.getYRot();
+        float oldYawHead = player.yHeadRot; // field_70759_as
+        float oldPrevPitch = player.xRotO;
+        float oldPrevYaw = player.yRotO;
+        float oldPrevYawHead = player.yHeadRotO; // field_70758_at
+        float oldEyeHeight = player.getEyeHeight();
 
-				// Inject our custom orientation data
-				player.setPosRaw(pos.getX(), pos.getY(), pos.getZ());
-				player.xo = pos.getX();
-				player.yo = pos.getY();
-				player.zo = pos.getZ();
-				player.setXRot((float)Math.toDegrees(Math.asin(-aim.y)));
-				player.setYRot((float)Math.toDegrees(Math.atan2(-aim.x, aim.z)));
-				player.xRotO = player.getXRot();
-				player.yRotO = player.yHeadRotO = player.yHeadRot = player.getYRot();
-				Reflector.setFieldValue(Reflector.Entity_eyeHeight, player, 0);
+        VivePlayer data = null;
+        if (VPE.vivePlayers.containsKey(uuid) && VPE.vivePlayers.get(uuid).isVR()) { // Check again in case of race condition
+            data = VPE.vivePlayers.get(uuid);
+            Location pos = data.getControllerPos(0);
+            Vec3 aim = data.getControllerDir(0);
 
-				// Set up offset to fix relative positions
-				// P.S. Spigot mappings are stupid
-				data.offset = oldPos.add(-pos.getX(), -pos.getY(), -pos.getZ());
-			}
+            // Inject our custom orientation data
+            player.setPosRaw(pos.getX(), pos.getY(), pos.getZ());
+            player.xo = pos.getX();
+            player.yo = pos.getY();
+            player.zo = pos.getZ();
+            player.setXRot((float)Math.toDegrees(Math.asin(-aim.y)));
+            player.setYRot((float)Math.toDegrees(Math.atan2(-aim.x, aim.z)));
+            player.xRotO = player.getXRot();
+            player.yRotO = player.yHeadRotO = player.yHeadRot = player.getYRot();
+            Reflector.setFieldValue(Reflector.Entity_eyeHeight, player, 0);
 
-			// Call the packet handler directly
-			// This is several implementation details that we have to replicate
-			try {
-				if (netManager.isConnected()) {
-					try {
-						((Packet)msg).handle(this.netManager.getPacketListener());
-					} 
-					catch (RunningOnDifferentThreadException runningondifferentthreadexception)
-					{
-					}
-				}
-			} finally {
-				// Vanilla uses SimpleInboundChannelHandler, which automatically releases
-				// by default, so we're expected to release the packet once we're done.
-				ReferenceCountUtil.release(msg);
-			}
+            // Set up offset to fix relative positions
+            // P.S. Spigot mappings are stupid
+            data.offset = oldPos.add(-pos.getX(), -pos.getY(), -pos.getZ());
+        }
 
-			// Restore the original orientation data
-			player.setPosRaw(oldPos.x, oldPos.y, oldPos.z);
-			player.xo = oldPrevPos.x;
-			player.yo = oldPrevPos.y;
-			player.zo = oldPrevPos.z;
-			player.setXRot(oldPitch);
-			player.setYRot(oldYaw);
-			player.yHeadRot = oldYawHead;
-			player.xRotO = oldPrevPitch;
-			player.yRotO = oldPrevYaw;
-			player.yHeadRotO = oldPrevYawHead;
-			Reflector.setFieldValue(Reflector.Entity_eyeHeight, player, oldEyeHeight);
+        // Call the packet handler directly
+        // This is several implementation details that we have to replicate
+        try {
+            if (netManager.isConnected()) {
+                try {
+                    ((Packet)msg).handle(this.netManager.getPacketListener());
+                }
+                catch (RunningOnDifferentThreadException runningondifferentthreadexception)
+                {
+                }
+            }
+        } finally {
+            // Vanilla uses SimpleInboundChannelHandler, which automatically releases
+            // by default, so we're expected to release the packet once we're done.
+            ReferenceCountUtil.release(msg);
+        }
 
-			// Reset offset
-			if (data != null)
-				data.offset = new Vec3(0, 0, 0);
-		});
-	}
+        // Restore the original orientation data
+        player.setPosRaw(oldPos.x, oldPos.y, oldPos.z);
+        player.xo = oldPrevPos.x;
+        player.yo = oldPrevPos.y;
+        player.zo = oldPrevPos.z;
+        player.setXRot(oldPitch);
+        player.setYRot(oldYaw);
+        player.yHeadRot = oldYawHead;
+        player.xRotO = oldPrevPitch;
+        player.yRotO = oldPrevYaw;
+        player.yHeadRotO = oldPrevYawHead;
+        Reflector.setFieldValue(Reflector.Entity_eyeHeight, player, oldEyeHeight);
+
+        // Reset offset
+        if (data != null)
+            data.offset = new Vec3(0, 0, 0);
+    }
 }

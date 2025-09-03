@@ -20,8 +20,11 @@ import org.vivecraft.VivecraftPaperExtentions.utils.MetadataHelper;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
+import io.papermc.paper.threadedregions.scheduler.AsyncScheduler;
+import io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler;
+import io.papermc.paper.threadedregions.scheduler.RegionScheduler;
+
 import net.kyori.adventure.text.Component;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.Connection;
 import net.minecraft.resources.ResourceLocation;
@@ -39,7 +42,6 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.craftbukkit.entity.CraftCreeper;
 import org.bukkit.craftbukkit.entity.CraftEnderman;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
-import org.bukkit.craftbukkit.inventory.CraftItemStack;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
@@ -56,7 +58,6 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
 import org.spigotmc.SpigotConfig;
 
 public class VPE extends JavaPlugin implements Listener {
@@ -68,15 +69,31 @@ public class VPE extends JavaPlugin implements Listener {
     private final Map<UUID, org.bukkit.permissions.PermissionAttachment> attachments = new HashMap<>();
     public static VPE me;
 
-    private BukkitTask sendPosDataTask = null;
-    public List<String> blocklist = new ArrayList<>();
+    private GlobalRegionScheduler globalScheduler;
+    private AsyncScheduler asyncScheduler;
+    private RegionScheduler regionScheduler;
 
+    private boolean sendPosDataTaskActive = false;
+
+    public List<String> blocklist = new ArrayList<>();
     public boolean debug = false;
+
+    private boolean isFolia = false;
 
     @Override
     public void onEnable() {
         super.onEnable();
         me = this;
+
+        try {
+            Class.forName("io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler");
+            isFolia = true;
+            globalScheduler = Bukkit.getGlobalRegionScheduler();
+            asyncScheduler = Bukkit.getAsyncScheduler();
+            regionScheduler = Bukkit.getRegionScheduler();
+        } catch (ClassNotFoundException e) {
+            isFolia = false;
+        }
 
         registerCommands();
 
@@ -108,9 +125,34 @@ public class VPE extends JavaPlugin implements Listener {
 
         debug = getConfig().getBoolean("general.debug", false);
 
-        sendPosDataTask = getServer().getScheduler().runTaskTimer(this, this::sendPosData, 20L, 1L);
+        startPosDataTask();
+        scheduleEntityCheck();
+    }
 
-        CheckAllEntities();
+    private void startPosDataTask() {
+        if (sendPosDataTaskActive) return;
+
+        sendPosDataTaskActive = true;
+
+        if (isFolia) {
+            globalScheduler.runAtFixedRate(this, (task) -> {
+                if (!sendPosDataTaskActive) {
+                    task.cancel();
+                    return;
+                }
+                sendPosData();
+            }, 20L, 1L);
+        } else {
+            getServer().getScheduler().runTaskTimer(this, this::sendPosData, 20L, 1L);
+        }
+    }
+
+    private void scheduleEntityCheck() {
+        if (isFolia) {
+            globalScheduler.run(this, (task) -> CheckAllEntities());
+        } else {
+            getServer().getScheduler().runTask(this, this::CheckAllEntities);
+        }
     }
 
     private void registerCommands() {
@@ -169,16 +211,24 @@ public class VPE extends JavaPlugin implements Listener {
     }
 
     public static ItemStack setLocalizedItemName(ItemStack stack, String key, String fallback) {
-        var nmsStack = CraftItemStack.asNMSCopy(stack);
-        nmsStack.set(DataComponents.CUSTOM_NAME,
-                net.minecraft.network.chat.Component.translatableWithFallback(key, fallback));
-        return CraftItemStack.asBukkitCopy(nmsStack);
+        ItemMeta meta = stack.getItemMeta();
+        meta.displayName(Component.translatable(key, Component.text(fallback)));
+        stack.setItemMeta(meta);
+        return stack;
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onCreatureSpawn(CreatureSpawnEvent event) {
         if(!event.isCancelled()){
-            EditEntity(event.getEntity());
+            scheduleEntityEdit(event.getEntity());
+        }
+    }
+
+    private void scheduleEntityEdit(Entity entity) {
+        if (isFolia) {
+            entity.getScheduler().run(this, (task) -> EditEntity(entity), null);
+        } else {
+            getServer().getScheduler().runTask(this, () -> EditEntity(entity));
         }
     }
 
@@ -186,7 +236,7 @@ public class VPE extends JavaPlugin implements Listener {
         List<World> worlds = this.getServer().getWorlds();
         for(World world: worlds){
             for(Entity e: world.getLivingEntities()){
-                EditEntity(e);
+                scheduleEntityEdit(e);
             }
         }
     }
@@ -264,10 +314,7 @@ public class VPE extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
-        if(sendPosDataTask != null) {
-            sendPosDataTask.cancel();
-        }
-
+        sendPosDataTaskActive = false;
         // Clean up attachments
         for (org.bukkit.permissions.PermissionAttachment attachment : attachments.values()) {
             if (attachment != null) {
@@ -307,44 +354,53 @@ public class VPE extends JavaPlugin implements Listener {
         if (debug)
             getLogger().info("Checking " + p.getName() + " for Vivecraft");
 
-        getServer().getScheduler().runTaskLater(this, () -> {
-            if (p.isOnline()) {
-                boolean shouldKick = false;
+        if (isFolia) {
+            p.getScheduler().runDelayed(this, (task) -> {
+                checkPlayerAfterJoin(p);
+            }, null, waitTime);
+        } else {
+            getServer().getScheduler().runTaskLater(this, () -> {
+                checkPlayerAfterJoin(p);
+            }, waitTime);
+        }
 
-                if(vivePlayers.containsKey(p.getUniqueId())) {
-                    VivePlayer vp = vivePlayers.get(p.getUniqueId());
-                    if(debug) {
-                        getLogger().info(p.getName() + " using: " + vp.version
-                                + " " + (vp.isVR() ? "VR" : "NONVR")
-                                + " " + (vp.isSeated() ? "SEATED" : ""));
-                    }
-                    if(!vp.isVR()) shouldKick = true;
-                } else {
-                    shouldKick = true;
-                    if(debug)
-                        getLogger().info(p.getName() + " Vivecraft not detected");
-                }
-
-                if(shouldKick && getConfig().getBoolean("general.vive-only")) {
-                    if (!getConfig().getBoolean("general.allow-op") || !p.isOp()) {
-                        getLogger().info(p.getName() + " got kicked for not using Vivecraft");
-                        p.kick(Component.text(getConfig().getString("general.vive-only-kickmessage")));
-                        return;
-                    }
-                }
-
-                sendWelcomeMessage(p);
-                setPermissionsGroup(p);
-            } else {
-                if (debug)
-                    getLogger().info(p.getName() + " no longer online!");
-            }
-        }, waitTime);
-
-        // Add AimFixHandler to the pipeline
         Connection netManager = ((CraftPlayer)p).getHandle().connection.connection;
         netManager.channel.pipeline().addBefore("packet_handler", "vr_aim_fix",
                 new AimFixHandler(netManager));
+    }
+
+    private void checkPlayerAfterJoin(Player p) {
+        if (p.isOnline()) {
+            boolean shouldKick = false;
+
+            if(vivePlayers.containsKey(p.getUniqueId())) {
+                VivePlayer vp = vivePlayers.get(p.getUniqueId());
+                if(debug) {
+                    getLogger().info(p.getName() + " using: " + vp.version
+                            + " " + (vp.isVR() ? "VR" : "NONVR")
+                            + " " + (vp.isSeated() ? "SEATED" : ""));
+                }
+                if(!vp.isVR()) shouldKick = true;
+            } else {
+                shouldKick = true;
+                if(debug)
+                    getLogger().info(p.getName() + " Vivecraft not detected");
+            }
+
+            if(shouldKick && getConfig().getBoolean("general.vive-only")) {
+                if (!getConfig().getBoolean("general.allow-op") || !p.isOp()) {
+                    getLogger().info(p.getName() + " got kicked for not using Vivecraft");
+                    p.kick(Component.text(getConfig().getString("general.vive-only-kickmessage")));
+                    return;
+                }
+            }
+
+            sendWelcomeMessage(p);
+            setPermissionsGroup(p);
+        } else {
+            if (debug)
+                getLogger().info(p.getName() + " no longer online!");
+        }
     }
 
     public static boolean isVive(Player p){
@@ -458,5 +514,21 @@ public class VPE extends JavaPlugin implements Listener {
             return !vp.isSeated() && vp.isVR();
         }
         return false;
+    }
+
+    public boolean isFolia() {
+        return isFolia;
+    }
+
+    public GlobalRegionScheduler getGlobalScheduler() {
+        return globalScheduler;
+    }
+
+    public AsyncScheduler getAsyncScheduler() {
+        return asyncScheduler;
+    }
+
+    public RegionScheduler getRegionScheduler() {
+        return regionScheduler;
     }
 }

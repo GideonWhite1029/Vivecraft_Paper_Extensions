@@ -28,6 +28,10 @@ public class VivePlayer {
 	public byte activeHand;
 	public boolean crawling;
 
+    public boolean isStanding = true;
+    public boolean isInMenuWorld = false;
+    public boolean isUsingRoomscale = true;
+
 	public Vec3 offset = new Vec3(0, 0, 0);
 	public Player player;
 	public String version;

@@ -220,17 +220,37 @@ public class VivecraftNetworkListener implements PluginMessageListener {
                     float x = d.readFloat();
                     float y = d.readFloat();
                     float z = d.readFloat();
-                    ServerPlayer nms = 	((CraftPlayer)sender).getHandle();
-                    nms.absSnapTo(x, y, z, nms.getXRot(), nms.getYRot());
+
+                    if (vpe.isFolia()) {
+                        sender.getScheduler().run(vpe, (task) -> {
+                            ServerPlayer nms = ((CraftPlayer)sender).getHandle();
+                            nms.absSnapTo(x, y, z, nms.getXRot(), nms.getYRot());
+                        }, null);
+                    } else {
+                        vpe.getServer().getScheduler().runTask(vpe, () -> {
+                            ServerPlayer nms = ((CraftPlayer)sender).getHandle();
+                            nms.absSnapTo(x, y, z, nms.getXRot(), nms.getYRot());
+                        });
+                    }
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
 
                 break;
             case CLIMBING:
-                ServerPlayer nms = ((CraftPlayer)sender).getHandle();
-                nms.fallDistance = 0;
-                Reflector.setFieldValue(Reflector.aboveGroundTickCount, nms.connection, 0);
+                if (vpe.isFolia()) {
+                    sender.getScheduler().run(vpe, (task) -> {
+                        ServerPlayer nms = ((CraftPlayer)sender).getHandle();
+                        nms.fallDistance = 0;
+                        Reflector.setFieldValue(Reflector.aboveGroundTickCount, nms.connection, 0);
+                    }, null);
+                } else {
+                    vpe.getServer().getScheduler().runTask(vpe, () -> {
+                        ServerPlayer nms = ((CraftPlayer)sender).getHandle();
+                        nms.fallDistance = 0;
+                        Reflector.setFieldValue(Reflector.aboveGroundTickCount, nms.connection, 0);
+                    });
+                }
                 break;
             case ACTIVEHAND:
                 ByteArrayInputStream a2 = new ByteArrayInputStream(data);
@@ -248,9 +268,20 @@ public class VivecraftNetworkListener implements PluginMessageListener {
                 ByteArrayInputStream a3 = new ByteArrayInputStream(data);
                 DataInputStream b3 = new DataInputStream(a3);
                 try {
-                    vp.crawling = b3.readBoolean();
-                    if (vp.crawling)
-                        ((CraftPlayer)sender).getHandle().setPose(Pose.SWIMMING);
+                    boolean crawling = b3.readBoolean();
+                    vp.crawling = crawling;
+
+                    if (crawling) {
+                        if (vpe.isFolia()) {
+                            sender.getScheduler().run(vpe, (task) -> {
+                                ((CraftPlayer)sender).getHandle().setPose(Pose.SWIMMING);
+                            }, null);
+                        } else {
+                            vpe.getServer().getScheduler().runTask(vpe, () -> {
+                                ((CraftPlayer)sender).getHandle().setPose(Pose.SWIMMING);
+                            });
+                        }
+                    }
                 } catch (IOException e2) {
                     e2.printStackTrace();
                 }
@@ -278,7 +309,29 @@ public class VivecraftNetworkListener implements PluginMessageListener {
                 //don't care yet.
                 break;
             case VR_PLAYER_STATE:
-                //todo.
+                ByteArrayInputStream stateStream = new ByteArrayInputStream(data);
+                DataInputStream stateData = new DataInputStream(stateStream);
+                try {
+                    boolean isStanding = stateData.readBoolean();
+                    boolean isInMenuWorld = stateData.readBoolean();
+                    boolean isUsingRoomscale = stateData.readBoolean();
+
+                    vp.isStanding = isStanding;
+                    vp.isInMenuWorld = isInMenuWorld;
+                    vp.isUsingRoomscale = isUsingRoomscale;
+
+                    MetadataHelper.updateMetdata(vp);
+
+                    if(vpe.debug) {
+                        vpe.getLogger().info(sender.getName() + " VR State - Standing: " + isStanding +
+                                ", MenuWorld: " + isInMenuWorld +
+                                ", Roomscale: " + isUsingRoomscale);
+                    }
+                } catch (IOException e) {
+                    if(vpe.debug) {
+                        vpe.getLogger().warning("Error reading VR player state: " + e.getMessage());
+                    }
+                }
                 break;
             default:
                 break;
