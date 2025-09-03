@@ -2,10 +2,10 @@ package org.vivecraft.VivecraftPaperExtentions;
 
 import java.util.AbstractCollection;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.vivecraft.VivecraftPaperExtentions.command.VivecraftCommands;
 import org.vivecraft.VivecraftPaperExtentions.entities.CustomEndermanFreezeWhenLookedAt;
@@ -65,8 +65,8 @@ public class VPE extends JavaPlugin implements Listener {
 
     public final static String CHANNEL = "vivecraft:data";
 
-    public static Map<UUID, VivePlayer> vivePlayers = new HashMap<UUID, VivePlayer>();
-    private final Map<UUID, org.bukkit.permissions.PermissionAttachment> attachments = new HashMap<>();
+    public static Map<UUID, VivePlayer> vivePlayers = new ConcurrentHashMap<>();
+    private final Map<UUID, org.bukkit.permissions.PermissionAttachment> attachments = new ConcurrentHashMap<>();
     public static VPE me;
 
     private GlobalRegionScheduler globalScheduler;
@@ -107,7 +107,7 @@ public class VPE extends JavaPlugin implements Listener {
         saveResource("config-instructions.yml", true);
         loadBlocklist();
 
-        vivePlayers = new HashMap<>();
+        vivePlayers = new ConcurrentHashMap<>();
 
         getServer().getMessenger().registerIncomingPluginChannel(this, CHANNEL, new VivecraftNetworkListener(this));
         getServer().getMessenger().registerOutgoingPluginChannel(this, CHANNEL);
@@ -278,11 +278,13 @@ public class VPE extends JavaPlugin implements Listener {
     }
 
     public void sendPosData() {
-        for (VivePlayer sendTo : vivePlayers.values()) {
+        List<VivePlayer> playerSnapshot = new ArrayList<>(vivePlayers.values());
+
+        for (VivePlayer sendTo : playerSnapshot) {
             if (sendTo == null || sendTo.player == null || !sendTo.player.isOnline())
                 continue;
 
-            for (VivePlayer v : vivePlayers.values()) {
+            for (VivePlayer v : playerSnapshot) {
                 if (v == sendTo || v == null || v.player == null || !v.player.isOnline()
                         || v.player.getWorld() != sendTo.player.getWorld()
                         || v.hmdData == null || v.controller0data == null || v.controller1data == null){
@@ -301,7 +303,9 @@ public class VPE extends JavaPlugin implements Listener {
         if(v == null) return;
         var payload = v.getVRPacket();
 
-        for (VivePlayer sendTo : vivePlayers.values()) {
+        List<VivePlayer> playerSnapshot = new ArrayList<>(vivePlayers.values());
+
+        for (VivePlayer sendTo : playerSnapshot) {
             if (sendTo == null || sendTo.player == null || !sendTo.player.isOnline())
                 continue;
 
@@ -418,7 +422,7 @@ public class VPE extends JavaPlugin implements Listener {
     public void setPermissionsGroup(Player p) {
         if(!getConfig().getBoolean("permissions.enabled")) return;
 
-        Map<String, Boolean> groups = new HashMap<>();
+        Map<String, Boolean> groups = new ConcurrentHashMap<>();
 
         boolean isvive = isVive(p);
         boolean iscompanion = isCompanion(p);

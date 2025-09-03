@@ -32,9 +32,13 @@ public class AimFixHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         Player player = ((ServerGamePacketListenerImpl)netManager.getPacketListener()).player;
-        boolean isCapturedPacket = msg instanceof ServerboundUseItemPacket || msg instanceof ServerboundUseItemOnPacket || msg instanceof ServerboundPlayerActionPacket;
+        boolean isCapturedPacket = msg instanceof ServerboundUseItemPacket ||
+                msg instanceof ServerboundUseItemOnPacket ||
+                msg instanceof ServerboundPlayerActionPacket;
         UUID uuid = player.getGameProfile().getId();
-        if (!VPE.vivePlayers.containsKey(uuid) || !VPE.vivePlayers.get(uuid).isVR() || !isCapturedPacket || player.getServer() == null) {
+
+        if (!VPE.vivePlayers.containsKey(uuid) || !VPE.vivePlayers.get(uuid).isVR() ||
+                !isCapturedPacket || player.getServer() == null) {
             // we don't need to handle this packet, just defer to the next handler in the pipeline
             ctx.fireChannelRead(msg);
             return;
@@ -56,19 +60,19 @@ public class AimFixHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void processPacket(Player player, Object msg, UUID uuid) {
-        // Save all the current orientation data
         Vec3 oldPos = player.position();
         Vec3 oldPrevPos = new Vec3(player.xo, player.yo, player.zo);
         float oldPitch = player.getXRot();
         float oldYaw = player.getYRot();
-        float oldYawHead = player.yHeadRot; // field_70759_as
+        float oldYawHead = player.yHeadRot;
         float oldPrevPitch = player.xRotO;
         float oldPrevYaw = player.yRotO;
-        float oldPrevYawHead = player.yHeadRotO; // field_70758_at
+        float oldPrevYawHead = player.yHeadRotO;
         float oldEyeHeight = player.getEyeHeight();
 
         VivePlayer data = null;
-        if (VPE.vivePlayers.containsKey(uuid) && VPE.vivePlayers.get(uuid).isVR()) { // Check again in case of race condition
+
+        if (VPE.vivePlayers.containsKey(uuid) && VPE.vivePlayers.get(uuid).isVR()) {
             data = VPE.vivePlayers.get(uuid);
             Location pos = data.getControllerPos(0);
             Vec3 aim = data.getControllerDir(0);
@@ -95,9 +99,7 @@ public class AimFixHandler extends ChannelInboundHandlerAdapter {
             if (netManager.isConnected()) {
                 try {
                     ((Packet)msg).handle(this.netManager.getPacketListener());
-                }
-                catch (RunningOnDifferentThreadException runningondifferentthreadexception)
-                {
+                } catch (RunningOnDifferentThreadException runningondifferentthreadexception) {
                 }
             }
         } finally {
@@ -119,8 +121,8 @@ public class AimFixHandler extends ChannelInboundHandlerAdapter {
         player.yHeadRotO = oldPrevYawHead;
         Reflector.setFieldValue(Reflector.Entity_eyeHeight, player, oldEyeHeight);
 
-        // Reset offset
-        if (data != null)
+        if (data != null) {
             data.offset = new Vec3(0, 0, 0);
+        }
     }
 }

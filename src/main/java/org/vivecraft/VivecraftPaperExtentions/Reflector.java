@@ -68,8 +68,8 @@ public class Reflector {
     private static Field tryObfuscatedField(String mojangName, Class<?> clazz) {
         // Map of Mojang names to obfuscated names for 1.21.x
         String obfuscatedName = switch (mojangName) {
-            case "entityData" -> "at";  // Entity.entityData - обновлено
-            case "DATA_POSE" -> "bA";   // Entity.DATA_POSE - добавлено
+            case "entityData" -> "at";  // Entity.entityData
+            case "DATA_POSE" -> "bA";   // Entity.DATA_POSE
             case "eyeHeight" -> "be";    // Entity.eyeHeight
             case "itemsById" -> "e";     // SynchedEntityData.itemsById
             case "availableGoals" -> "c"; // GoalSelector.availableGoals
