@@ -1,5 +1,5 @@
 name: VivecraftPaperExtentions
-version: '1.1.0-paper'
+version: ${version}
 main: org.vivecraft.VivecraftPaperExtentions.VPE
 api-version: '1.21'
 folia-supported: true

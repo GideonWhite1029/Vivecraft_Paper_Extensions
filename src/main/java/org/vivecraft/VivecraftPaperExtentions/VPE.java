@@ -520,21 +520,45 @@ public class VPE extends JavaPlugin implements Listener {
         }
     }
 
-    public void sendWelcomeMessage(Player p){
-        if(!getConfig().getBoolean("welcomemsg.enabled")) return;
+    public void sendWelcomeMessage(Player p) {
+        if (!getConfig().getBoolean("welcomemsg.enabled", false)) {
+            if (debug) getLogger().info("Welcome messages are disabled in config");
+            return;
+        }
 
         VivePlayer vp = vivePlayers.get(p.getUniqueId());
+        String messageKey;
 
-        if(vp == null){
-            broadcastConfigString("welcomemsg.welcomeVanilla", p.getDisplayName());
+        if (vp == null) {
+            messageKey = "welcomemsg.welcomeVanilla";
+            if (debug) getLogger().info("Player " + p.getName() + " joined as vanilla (no VivePlayer data)");
         } else {
-            if(vp.isSeated())
-                broadcastConfigString("welcomemsg.welcomeSeated", p.getDisplayName());
-            else if (!vp.isVR())
-                broadcastConfigString("welcomemsg.welcomenonVR", p.getDisplayName());
-            else
-                broadcastConfigString("welcomemsg.welcomeVR", p.getDisplayName());
+            if (vp.isSeated()) {
+                messageKey = "welcomemsg.welcomeSeated";
+                if (debug) getLogger().info("Player " + p.getName() + " joined as seated VR");
+            } else if (!vp.isVR()) {
+                messageKey = "welcomemsg.welcomenonVR";
+                if (debug) getLogger().info("Player " + p.getName() + " joined as non-VR companion");
+            } else {
+                messageKey = "welcomemsg.welcomeVR";
+                if (debug) getLogger().info("Player " + p.getName() + " joined as standing VR");
+            }
         }
+
+        String message = getConfig().getString(messageKey, null);
+
+        if (debug) {
+            getLogger().info("Attempting to get message for key: " + messageKey);
+            getLogger().info("Retrieved message: " + (message != null ? message : "NULL"));
+            getLogger().info("Config contains key: " + getConfig().contains(messageKey));
+        }
+
+        if (message == null || message.trim().isEmpty()) {
+            if (debug) getLogger().warning("Message for key '" + messageKey + "' is null or empty. Skipping welcome message.");
+            return;
+        }
+
+        broadcastConfigString(messageKey, p.getDisplayName());
     }
 
     public static boolean isSeated(Player player){
