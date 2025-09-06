@@ -7,6 +7,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import io.papermc.paper.datacomponent.DataComponentTypes;
+import io.papermc.paper.datacomponent.item.DyedItemColor;
+import org.bukkit.persistence.PersistentDataType;
 import org.vivecraft.VivecraftPaperExtentions.command.VivecraftCommands;
 import org.vivecraft.VivecraftPaperExtentions.entities.CustomEndermanFreezeWhenLookedAt;
 import org.vivecraft.VivecraftPaperExtentions.entities.CustomEndermanLookForPlayerGoal;
@@ -55,7 +58,6 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.spigotmc.SpigotConfig;
@@ -164,34 +166,62 @@ public class VPE extends JavaPlugin implements Listener {
     }
 
     private void registerRecipes() {
-        // Jump Boots recipe
-        ItemStack jumpBoots = new ItemStack(Material.LEATHER_BOOTS);
-        ItemMeta bootsMeta = jumpBoots.getItemMeta();
-        bootsMeta.setUnbreakable(true);
-        bootsMeta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
-        ((LeatherArmorMeta) bootsMeta).setColor(Color.fromRGB(9233775));
-        jumpBoots.setItemMeta(bootsMeta);
-        jumpBoots = setLocalizedItemName(jumpBoots, "vivecraft.item.jumpboots", "Jump Boots");
+        ItemStack jumpBoots = createJumpBoots();
 
         ShapedRecipe jumpBootsRecipe = new ShapedRecipe(new NamespacedKey(this, "jump_boots"), jumpBoots);
         jumpBootsRecipe.shape("B", "S");
         jumpBootsRecipe.setIngredient('B', Material.LEATHER_BOOTS);
         jumpBootsRecipe.setIngredient('S', Material.SLIME_BLOCK);
-        Bukkit.addRecipe(jumpBootsRecipe);
 
-        // Climb Claws recipe
-        ItemStack climbClaws = new ItemStack(Material.SHEARS);
-        ItemMeta clawsMeta = climbClaws.getItemMeta();
-        clawsMeta.setUnbreakable(true);
-        clawsMeta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
-        climbClaws.setItemMeta(clawsMeta);
-        climbClaws = setLocalizedItemName(climbClaws, "vivecraft.item.climbclaws", "Climb Claws");
+        getServer().addRecipe(jumpBootsRecipe);
+
+        ItemStack climbClaws = createClimbClaws();
 
         ShapedRecipe climbClawsRecipe = new ShapedRecipe(new NamespacedKey(this, "climb_claws"), climbClaws);
         climbClawsRecipe.shape("E E", "S S");
         climbClawsRecipe.setIngredient('E', Material.SPIDER_EYE);
         climbClawsRecipe.setIngredient('S', Material.SHEARS);
-        Bukkit.addRecipe(climbClawsRecipe);
+
+        getServer().addRecipe(climbClawsRecipe);
+    }
+
+    private ItemStack createJumpBoots() {
+        ItemStack jumpBoots = new ItemStack(Material.LEATHER_BOOTS);
+        jumpBoots.editMeta(meta -> {
+            meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
+            meta.getPersistentDataContainer().set(
+                    new NamespacedKey(this, "vivecraft_item"),
+                    PersistentDataType.STRING,
+                    "jump_boots"
+            );
+        });
+
+        jumpBoots.setData(DataComponentTypes.UNBREAKABLE);
+        jumpBoots.setData(DataComponentTypes.DYED_COLOR,
+                DyedItemColor.dyedItemColor(Color.fromRGB(9233775)));
+
+        jumpBoots = setLocalizedItemName(jumpBoots, "vivecraft.item.jumpboots", "Jump Boots");
+
+        return jumpBoots;
+    }
+
+    private ItemStack createClimbClaws() {
+        ItemStack climbClaws = new ItemStack(Material.SHEARS);
+
+        climbClaws.editMeta(meta -> {
+            meta.getPersistentDataContainer().set(
+                    new NamespacedKey(this, "vivecraft_item"),
+                    PersistentDataType.STRING,
+                    "climb_claws"
+            );
+            meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
+        });
+
+        climbClaws.setData(DataComponentTypes.UNBREAKABLE);
+
+        climbClaws = setLocalizedItemName(climbClaws, "vivecraft.item.climbclaws", "Climb Claws");
+
+        return climbClaws;
     }
 
     private void loadBlocklist() {
