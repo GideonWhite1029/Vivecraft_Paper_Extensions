@@ -35,10 +35,10 @@ public class AimFixHandler extends ChannelInboundHandlerAdapter {
         boolean isCapturedPacket = msg instanceof ServerboundUseItemPacket ||
                 msg instanceof ServerboundUseItemOnPacket ||
                 msg instanceof ServerboundPlayerActionPacket;
-        UUID uuid = player.getGameProfile().getId();
+        UUID uuid = player.getGameProfile().id();
 
         if (!VPE.vivePlayers.containsKey(uuid) || !VPE.vivePlayers.get(uuid).isVR() ||
-                !isCapturedPacket || player.getServer() == null) {
+                !isCapturedPacket) {
             // we don't need to handle this packet, just defer to the next handler in the pipeline
             ctx.fireChannelRead(msg);
             return;
